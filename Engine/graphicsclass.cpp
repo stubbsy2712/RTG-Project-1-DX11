@@ -226,8 +226,8 @@ bool GraphicsClass::Initialize(HINSTANCE hinstance, HWND hwnd, int screenWidth, 
 	}
 
 	CuboidZone* batzone = new CuboidZone;
-	batzone->lowerBound = 12.5f;
-	batzone->upperBound = 17.5f;
+	batzone->lowerBound = 13;
+	batzone->upperBound = 17;
 	batzone->leftBound = -7;
 	batzone->rightBound = 7;
 	batzone->backBound = 7;
@@ -248,8 +248,8 @@ bool GraphicsClass::Initialize(HINSTANCE hinstance, HWND hwnd, int screenWidth, 
 		bats[x].model = batModel;
 		bats[x].currentRotation = new XMFLOAT3(0, 0, 0);
 		bats[x].currentDestination = new XMFLOAT3;
-		bats[x].speed = 1.0f;//units per second
-		bats[x].turnRate = 10.0f;//seconds per 180 degrees (pi radians).
+		bats[x].speed = 1.8f;//units per second
+		bats[x].turnRate = 6.0f;//seconds per 180 degrees (pi radians).
 		bats[x].flyZone = batzone;
 		bats[x].findNewDestination();
 	}

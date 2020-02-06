@@ -9,7 +9,6 @@ TextureClass::TextureClass()
 	m_texture = 0;
 }
 
-
 TextureClass::TextureClass(const TextureClass& other)
 {
 }

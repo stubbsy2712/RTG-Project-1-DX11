@@ -212,118 +212,85 @@ struct ConstantlyMovingModel
 		}
 	}
 
-	float limitAngleBetweenPi(float angle)
-	{
-		if (angle > XM_PI)
-			return XM_PI - (XM_PI - angle);
-		else if (angle < -XM_PI)
-			return (XM_2PI + angle);
-		else
-			return angle;
-	}
-
 	void softRotate(float turnPower, float needToFaceX, float needToFaceY)
 	{
 
-		float diffYRotation = needToFaceY - currentRotation->y;
-		float diffXRotation = needToFaceX - currentRotation->x;
-		//if (diffYRotation > XM_PI)
-		//	diffYRotation -= XM_PI;
-		//if (diffYRotation < -XM_PI)
-		//	diffYRotation += XM_PI;
-		//if (diffXRotation > XM_PI)
-		//	diffXRotation -= XM_PI;
-		//if (diffXRotation < -XM_PI)
-		//	diffXRotation += XM_PI;
+		bool currentUL = (currentRotation->y > XM_PIDIV2);
+		bool currentUR = (currentRotation->y > 0 && currentRotation->y < XM_PIDIV2);
+		bool currentLL = (currentRotation->y < -XM_PIDIV2);
+		bool currentLR = (currentRotation->y < 0 && currentRotation->y > -XM_PIDIV2);
+		bool needUL = (needToFaceY > XM_PIDIV2);
+		bool needUR = (needToFaceY > 0 && needToFaceY < XM_PIDIV2);
+		bool needLL = (needToFaceY < -XM_PIDIV2);
+		bool needLR = (needToFaceY < 0 && needToFaceY > -XM_PIDIV2);
 
-		//float turnBy = time * (XM_PI / turnRate);
+		bool bothLeft = ((currentLL || currentUL) && (needLL || needLR));
+		bool bothRight = ((currentLR || currentUR) && (needLR || needUR));
+		bool bothUpper = ((currentUL || currentUR) && (needUL || needUR));
+		bool bothLower = ((currentLL || currentLR) && (needLL || needLR));
+		bool sameLeft = ((currentLL && needLL) || (currentUL && needUL));
+		bool firstFrame = (!(currentLL || currentUL || currentLR || currentUR));
 
-		//if (diffXRotation > ANGLE_APPROXIMATION)
-		//	currentRotation->x += turnPower;
-		//if (diffXRotation < -ANGLE_APPROXIMATION)
-		//	currentRotation->x -= turnPower;
-		//if (diffYRotation > ANGLE_APPROXIMATION)
-		//	currentRotation->y += turnPower;
-		//if (diffYRotation < -ANGLE_APPROXIMATION)
-		//	currentRotation->y -= turnPower;
+		bool simpleRotation = (bothRight || bothUpper || bothLower || sameLeft || firstFrame);
+		//figure out rotations for opposite corners, and do some other magic for both left.
 
-		//piDiff = current - pi
-		//newAngle = -(pi - piDiff)
-
-		//if (currentRotation->x > XM_PI)
-		//	currentRotation->x = -(XM_PI - (currentRotation->x - XM_PI));
-		//if (currentRotation->y > XM_PI)
-		//	currentRotation->y = -(XM_PI - (currentRotation->y - XM_PI));
-		//if (currentRotation->x < -XM_PI)
-		//	currentRotation->x = -(XM_PI + (XM_PI - currentRotation->x));
-		//if (currentRotation->y < -XM_PI)
-		//	currentRotation->y = -(XM_PI + (XM_PI - currentRotation->y));
-
-		if ((needToFaceY > XM_PIDIV2 && currentRotation->y < -XM_PIDIV2) ||
-			(needToFaceY < -XM_PIDIV2 && currentRotation->y > XM_PIDIV2))
+		if (simpleRotation)
 		{
 			if (needToFaceY > currentRotation->y)
-			{
-				if (needToFaceY > currentRotation->y - turnPower)
-					currentRotation->y -= turnPower;
-				else
-					currentRotation->y = needToFaceY;
-			}
+				currentRotation->y += turnPower;
 			else if (needToFaceY < currentRotation->y)
-			{
-				if (needToFaceY < currentRotation->y + turnPower)
-					currentRotation->y += turnPower;
-				else
-					currentRotation->y = needToFaceY;
-			}
+				currentRotation->y -= turnPower;
+		}
+
+		else if (bothLeft)//If they're both in left quadrants, but not the same quadrant.
+		{
+			if (needToFaceY > currentRotation->y)
+				currentRotation->y -= turnPower;//clockwise.
+			else if (needToFaceY < currentRotation->y)
+				currentRotation->y += turnPower;//anti-clockwise.
 		}
 
 		else
-		{
-			if (needToFaceY > currentRotation->y)
+		{//Opposite quadrants
+			if (currentLL || currentLR)//current lower
 			{
-				if (needToFaceY > currentRotation->y + turnPower)
-					currentRotation->y += turnPower;
-				else
-					currentRotation->y = needToFaceY;
+				float oppositeAngle = currentRotation->y + XM_PI;
+				if (needToFaceY < oppositeAngle)
+					currentRotation->y -= turnPower;//Turn clockwise
+				else //if (needToFaceY > oppositeAngle)
+					currentRotation->y += turnPower;//Anti-clockwise
 			}
-			else if (needToFaceY < currentRotation->y)
+			else if (currentUL || currentUR)
 			{
-				if (needToFaceY < currentRotation->y - turnPower)
-					currentRotation->y -= turnPower;
-				else
-					currentRotation->y = needToFaceY;
+				float oppositeAngle = -(XM_PI - currentRotation->y);
+				if (needToFaceY < oppositeAngle)
+					currentRotation->y += turnPower;//Anti-clockwise
+				else //if (needToFaceY > oppositeAngle)
+					currentRotation->y -= turnPower;//Turn clockwise
+			}
+			else
+			{
+				currentRotation->y += turnPower;
 			}
 		}
-
-		if (needToFaceX > currentRotation->x)
-		{
-			if (needToFaceX > currentRotation->x + turnPower)
-				currentRotation->x += turnPower;
-			else
-				currentRotation->x = needToFaceX;
-		}
-		else if (needToFaceX < currentRotation->x)
-		{
-			if (needToFaceX < currentRotation->x - turnPower)
-				currentRotation->x -= turnPower;
-			else
-				currentRotation->x = needToFaceX;
-		}
+		//Fucking stumped - only case I can think of is it's trying to cross the axis. i.e. if Pi < needToFaceY or needToFaceY < - Pi
 
 		if (currentRotation->x > XM_PI)
 			currentRotation->x = -(XM_PI - (currentRotation->x - XM_PI));
+		if (currentRotation->x < -XM_PI)
+			//currentRotation->x = -(XM_PI + (XM_PI - currentRotation->x));
+			currentRotation->x += XM_2PI;
+
+		if (currentRotation->y < -XM_PI)
+			//currentRotation->y = -(XM_PI + (XM_PI - currentRotation->y));
+			//currentRotation->y = XM_PI - (currentRotation->y + XM_PI);
+			currentRotation->y += XM_2PI;
 		if (currentRotation->y > XM_PI)
 			currentRotation->y = -(XM_PI - (currentRotation->y - XM_PI));
-		if (currentRotation->x < -XM_PI)
-			currentRotation->x = -(XM_PI + (XM_PI - currentRotation->x));
-		if (currentRotation->y < -XM_PI)
-			currentRotation->y = -(XM_PI + (XM_PI - currentRotation->y));
 
 	}
 	void findNewDestination()
 	{
-		//TODO: Mouse controls
 		//Select random coordinates that are inside the zone of acceptable coordinates.
 		random_device rd1;
 		default_random_engine generator1(rd1());
@@ -382,6 +349,9 @@ struct ConstantlyMovingModel
 		//softRotate(time * XMConvertToRadians(1), needToFaceX, needToFaceY);
 		float turnPower = (time / turnRate) * XM_PI;
 		softRotate(turnPower, needToFaceX, needToFaceY);
+
+		//currentRotation->y = needToFaceY;
+		//currentRotation->x = needToFaceX;
 
 		//currentRotation->y = 0;
 		//currentRotation->x = 0;
