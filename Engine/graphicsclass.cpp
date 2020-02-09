@@ -703,9 +703,10 @@ bool GraphicsClass::Render()
 	m_Camera->GetViewMatrix(viewMatrix);
 	m_D3D->GetProjectionMatrix(projectionMatrix);
 
+	float timePassed = m_Timer->GetTime() * 0.0005;
 	for (int x = 0; x < 4; x++)
 	{
-		bats[x].moveOriginal(m_Timer->GetTime() * 0.0005);
+		bats[x].move(&timePassed);
 		m_D3D->GetWorldMatrix(worldMatrix);
 		worldMatrix = XMMatrixMultiply(worldMatrix, XMMatrixScaling(0.01f, 0.01f, 0.01f));//Scale first
 		translateMatrix = XMMatrixTranslation(bats[x].currentPosition.x, bats[x].currentPosition.y, bats[x].currentPosition.z);

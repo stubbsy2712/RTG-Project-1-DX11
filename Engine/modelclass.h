@@ -147,11 +147,9 @@ struct ModelAndPositionExtraPart
 
 struct ConstantlyMovingModel
 {
-	//float DEGREE_TO_RADIAN_CONVERSION_RATE = 0.0174532925f;
-	float GOAL_APPROXIMATION = 0.5f;
+	float GOAL_APPROXIMATION = 0.5f;//Arbitrary units, how large the (box) radius around the goal.
 	float ANGLE_APPROXIMATION = 0.05f;//In radians, how close is close enough to facing the correct direction.
-	//float RADIAN_TO_DEGREE_CONVERSION_RATE = 1 / DEGREE_TO_RADIAN_CONVERSION_RATE;
-	bool inZone;
+	string turnDirection = "new";
 
 	ModelClass* model;
 	XMFLOAT3 currentPosition;
@@ -162,29 +160,6 @@ struct ConstantlyMovingModel
 
 	float speed;//units moved per second, bigger is faster.
 	float turnRate;//time in seconds to turn 180 degrees, or PI radians, bigger is slower.
-
-	//The next few methods are awful.
-	void awfulZ(float moveBy)
-	{
-		if (currentDestination->z > currentPosition.z)
-			currentPosition.z += moveBy;
-		if (currentDestination->z < currentPosition.z)
-			currentPosition.z -= moveBy;
-	}
-	void awfulX(float moveBy)
-	{
-		if (currentDestination->x > currentPosition.x)
-			currentPosition.x += moveBy;
-		if (currentDestination->x < currentPosition.x)
-			currentPosition.x -= moveBy;
-	}
-	void awfulY(float moveBy)
-	{
-		if (currentDestination->y > currentPosition.y)
-			currentPosition.y += moveBy;
-		if (currentDestination->y < currentPosition.y)
-			currentPosition.y -= moveBy;
-	}
 
 	void shutdown()
 	{
@@ -212,17 +187,17 @@ struct ConstantlyMovingModel
 		}
 	}
 
-	void softRotate(float turnPower, float needToFaceX, float needToFaceY)
+	string findTurnDirection(float* needToFaceY)
 	{
 
 		bool currentUL = (currentRotation->y > XM_PIDIV2);
 		bool currentUR = (currentRotation->y > 0 && currentRotation->y < XM_PIDIV2);
 		bool currentLL = (currentRotation->y < -XM_PIDIV2);
 		bool currentLR = (currentRotation->y < 0 && currentRotation->y > -XM_PIDIV2);
-		bool needUL = (needToFaceY > XM_PIDIV2);
-		bool needUR = (needToFaceY > 0 && needToFaceY < XM_PIDIV2);
-		bool needLL = (needToFaceY < -XM_PIDIV2);
-		bool needLR = (needToFaceY < 0 && needToFaceY > -XM_PIDIV2);
+		bool needUL = (*needToFaceY > XM_PIDIV2);
+		bool needUR = (*needToFaceY > 0 && *needToFaceY < XM_PIDIV2);
+		bool needLL = (*needToFaceY < -XM_PIDIV2);
+		bool needLR = (*needToFaceY < 0 && *needToFaceY > -XM_PIDIV2);
 
 		bool bothLeft = ((currentLL || currentUL) && (needLL || needLR));
 		bool bothRight = ((currentLR || currentUR) && (needLR || needUR));
@@ -232,62 +207,91 @@ struct ConstantlyMovingModel
 		bool firstFrame = (!(currentLL || currentUL || currentLR || currentUR));
 
 		bool simpleRotation = (bothRight || bothUpper || bothLower || sameLeft || firstFrame);
-		//figure out rotations for opposite corners, and do some other magic for both left.
-
+		
+		//The simple way works
 		if (simpleRotation)
 		{
-			if (needToFaceY > currentRotation->y)
-				currentRotation->y += turnPower;
-			else if (needToFaceY < currentRotation->y)
-				currentRotation->y -= turnPower;
+			if (*needToFaceY > currentRotation->y)
+				return "anti-clockwise";
+			else if (*needToFaceY < currentRotation->y)
+				return "clockwise";
 		}
 
-		else if (bothLeft)//If they're both in left quadrants, but not the same quadrant.
+		//If they're both in left quadrants, but not the same quadrant.
+		else if (bothLeft)
 		{
-			if (needToFaceY > currentRotation->y)
-				currentRotation->y -= turnPower;//clockwise.
-			else if (needToFaceY < currentRotation->y)
-				currentRotation->y += turnPower;//anti-clockwise.
+			if (*needToFaceY > currentRotation->y)
+				return "clockwise";//hell breaks loose if this is reversed
+			else
+				return "anti-clockwise";//anti-clockwise. Doubles the issue reversed
 		}
 
+		//Figuring out the quickest rotation if the current and required rotation are in opposite quadrants.
 		else
-		{//Opposite quadrants
+		{
 			if (currentLL || currentLR)//current lower
 			{
 				float oppositeAngle = currentRotation->y + XM_PI;
-				if (needToFaceY < oppositeAngle)
-					currentRotation->y -= turnPower;//Turn clockwise
-				else //if (needToFaceY > oppositeAngle)
-					currentRotation->y += turnPower;//Anti-clockwise
+				if (*needToFaceY < oppositeAngle)
+					return "clockwise";
+				else
+					return "anti-clockwise";
 			}
 			else if (currentUL || currentUR)
 			{
 				float oppositeAngle = -(XM_PI - currentRotation->y);
-				if (needToFaceY < oppositeAngle)
-					currentRotation->y += turnPower;//Anti-clockwise
-				else //if (needToFaceY > oppositeAngle)
-					currentRotation->y -= turnPower;//Turn clockwise
+				if (*needToFaceY < oppositeAngle)
+					return "anti-clockwise";
+				else
+					return "clockwise";
 			}
 			else
 			{
-				currentRotation->y += turnPower;
+				return "clockwise";//In case something goes horribly wrong (shouldn't ever be called).
 			}
 		}
-		//Fucking stumped - only case I can think of is it's trying to cross the axis. i.e. if Pi < needToFaceY or needToFaceY < - Pi
+	}
+
+	void softRotate(float* turnPower, float* needToFaceX, float* needToFaceY)
+	{
+		if ((currentRotation->y == *needToFaceY) && (currentRotation->x == *needToFaceX))
+			return;
+
+		//Handle y axis rotation.
+		if (turnDirection == "new")
+			turnDirection = findTurnDirection(needToFaceY);
+
+		if (turnDirection == "clockwise")
+			currentRotation->y -= *turnPower;
+		else if (turnDirection == "anti-clockwise")
+			currentRotation->y += *turnPower;
+
+		if (currentRotation->y < -XM_PI)
+			currentRotation->y += XM_2PI;
+		if (currentRotation->y > XM_PI)
+			currentRotation->y = -(XM_2PI - currentRotation->y);
+
+		float angleOff = currentRotation->y - *needToFaceY;
+		if (sqrt(pow(angleOff, 2)) < ANGLE_APPROXIMATION)
+		{
+			currentRotation->y = *needToFaceY;
+			turnDirection = "forward";
+		}
+
+		//Turning on the x axis.
+		if (*needToFaceX > currentRotation->x)
+			currentRotation->x += *turnPower;
+		else if (*needToFaceX < currentRotation->x)
+			currentRotation->x -= *turnPower;
 
 		if (currentRotation->x > XM_PI)
 			currentRotation->x = -(XM_PI - (currentRotation->x - XM_PI));
 		if (currentRotation->x < -XM_PI)
-			//currentRotation->x = -(XM_PI + (XM_PI - currentRotation->x));
 			currentRotation->x += XM_2PI;
 
-		if (currentRotation->y < -XM_PI)
-			//currentRotation->y = -(XM_PI + (XM_PI - currentRotation->y));
-			//currentRotation->y = XM_PI - (currentRotation->y + XM_PI);
-			currentRotation->y += XM_2PI;
-		if (currentRotation->y > XM_PI)
-			currentRotation->y = -(XM_PI - (currentRotation->y - XM_PI));
-
+		angleOff = currentRotation->x - *needToFaceX;
+		if (sqrt(pow(angleOff, 2)) < ANGLE_APPROXIMATION)
+			currentRotation->x = *needToFaceX;
 	}
 	void findNewDestination()
 	{
@@ -312,59 +316,35 @@ struct ConstantlyMovingModel
 		goalBounds.backBound = currentDestination->z + GOAL_APPROXIMATION;
 		goalBounds.frontBound = currentDestination->z - GOAL_APPROXIMATION;
 	}
-	void moveOriginal(float time)
+	void move(float* time)
 	{
-		//Handle rotation.
 		//work out where it needs to face
-		//Only allow them to move 1 axis at a time.
 		float diffX = currentDestination->x - currentPosition.x;
 		float diffY = currentDestination->y - currentPosition.y;
 		float diffZ = currentDestination->z - currentPosition.z;
-		//float diffXZ = sqrt((diffX * diffX) + (diffZ * diffZ));//Pythagorous.
-		float diffXZ = sqrt(pow(diffX, 2) + pow(diffZ, 2));//Pythagorous.
-		//float diffYZ = sqrt((diffY * diffY) + (diffZ * diffZ));
-		//atanf returns radians.
-		//float hypotenuse = sqrt(pow(diffXZ, 2) + pow(diffY, 2));
-		//float needToFaceX = atanf(diffY / diffXZ);//a = diffY, b = xz, c = hypotenuse
-		//float needToFaceX = acosf(((diffXZ*diffXZ) + (hypotenuse * hypotenuse) - (diffY * diffY)) / (2 * (diffXZ * hypotenuse)));//a = diffY, b = xz, c = hypotenuse
-		//float needToFaceY = acosf(((diffXZ*diffXZ) + (diffX * diffX) - (diffZ * diffZ)) / (2 * (diffXZ * diffX)));//a = diffZ, b = diffX, c = xz
+		float diffXZ = sqrt(pow(diffX, 2) + pow(diffZ, 2));
 
+		//atanf returns radians.
 		float needToFaceY = atanf(diffZ / diffX);
 		if (diffZ < 0 && diffX < 0)
 			needToFaceY -= XM_PI;
 		else if (diffX < 0)
 			needToFaceY += XM_PI;
-		//if (needToFaceY < 0)
-		//	needToFaceY = -needToFaceY;
-		//if (needToFaceY < -XM_PIDIV2)
-		//	needToFaceY = -needToFaceY;
-		
-		//float needToFaceX = 0;
 
+		//The x axis rotation is much simpler because rotation on that axis is limited.
 		float needToFaceX = atan(diffY / diffXZ);
 
-		//currentRotation->y = needToFaceY;
-		//currentRotation->x = needToFaceX;
+		//Handle rotation.
+		float turnPower = (*time / turnRate) * XM_PI;
+		softRotate(&turnPower, &needToFaceX, &needToFaceY);
 		
-		//softRotate(time * XMConvertToRadians(1), needToFaceX, needToFaceY);
-		float turnPower = (time / turnRate) * XM_PI;
-		softRotate(turnPower, needToFaceX, needToFaceY);
-
-		//currentRotation->y = needToFaceY;
-		//currentRotation->x = needToFaceX;
-
-		//currentRotation->y = 0;
-		//currentRotation->x = 0;
-
-		if (time > 4)//Didn't want to do this, had no choice
-			time = 4;
-		float moveBy = time * speed;
+		//Didn't want to use a limiter, but had to otherwise the bats would move way too far in the first few frames.
+		if (*time > 4)
+			*time = 4;
+		float moveBy = *time * speed;
 
 		float radians = currentRotation->y;
 		float radiansX = currentRotation->x;
-
-		//float radians = needToFaceY;
-		//float radiansX = needToFaceX;
 
 		float moveX = cosf(radians) * cosf(radiansX) * moveBy;
 		float moveZ = sinf(radians) * cosf(radiansX) * moveBy;
@@ -372,27 +352,16 @@ struct ConstantlyMovingModel
 		currentPosition.x += moveX;
 		currentPosition.z += moveZ;
 		
-		currentPosition.y += sinf(radiansX) * moveBy;//* cosf(radians) 
+		currentPosition.y += sinf(radiansX) * moveBy;
 		//Would like to use trig to limit this, so that they move at a constant speed,
 		//currently they will essentially have a larger speed if they need to move on the y axis.
-
-		//float radians = currentRotation->y;
-		//float radiansX = currentRotation->x;
-		// Update the position.
-		//currentPosition.x += cosf(radians) * cosf(radiansX) * moveBy;
-		//if (diffZ > 0)
-
-		//awfulX(sqrt(pow((cosf(radians) * cosf(radiansX) * moveBy), 2)));
-		//awfulZ(sqrt(pow((sinf(radians) * cosf(radiansX) * moveBy), 2)));
-		//awfulY(sqrt(pow((sinf(radiansX) * cosf(radians) * moveBy), 2)));
+		//Could patch, but would be a nightmare.
 		
 		//Check if they have come close enough to reaching the destination.
 		if (goalBounds.isInZone(currentPosition))
 		{
-			moveBy++;
-			//currentPosition = currentDestination;
-			//originalPosition = currentDestination;
 			findNewDestination();
+			turnDirection = "new";
 		}
 	}
 };
